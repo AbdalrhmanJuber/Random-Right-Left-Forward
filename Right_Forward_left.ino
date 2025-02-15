@@ -264,40 +264,33 @@ void moveForward(float target_distance) {
   float Ki_dist = Ki;
   float Kd_dist = Kd;
   
-  // Heading PID gains (for the correction; these work with your updatePID function)
   float Kp_head = Kp;
   float Ki_head = Ki;
   float Kd_head = Kd;
   
-  // --- Reset the global PID state for heading (used by updatePID) ---
   integral = 0;
   prev_error = 0;
   derivative = 0;
   lastTime = millis();
   
-  // Start moving forward (initialize motor direction to forward)
   initialize_motors();
   
   while (true) {
-    // 1. Calculate distance traveled using the average of the encoder counts
     int avgPulses = (encoder_left_count + encoder_right_count) / 2;
     float distanceTraveled = (avgPulses / (float)PPR) * wheel_circumference;
     
     // Compute distance error (how far remaining)
     float distError = target_distance - distanceTraveled;
     
-    // If the error is small enough (within 0.5 cm), we're done.
     if (fabs(distError) < 0.5) {
       break;
     }
     
-    // 2. Compute the time step for the distance PID
     unsigned long currentTime = millis();
     float dt = (currentTime - lastTimeDist) / 1000.0f;
     if (dt < 0.01f) dt = 0.01f;
     lastTimeDist = currentTime;
-    
-    // 3. Distance PID Calculations (local variables)
+
     distanceIntegral += distError * dt;
     float distanceDerivative = (distError - distancePrevError) / dt;
     float forwardCommand = (Kp_dist * distError) + (Ki_dist * distanceIntegral) + (Kd_dist * distanceDerivative);
@@ -306,13 +299,11 @@ void moveForward(float target_distance) {
     // Constrain the forward command (this is the desired base speed)
     forwardCommand = constrain(forwardCommand, 0, Base_PWM);
     
-    // 4. Heading Correction using your ready PID function:
     // Calculate a heading error based on the difference between left and right encoders.
     float headingError = (float)encoder_left_count - (float)encoder_right_count;
-    updatePID(headingError);  // This updates the global variables: integral, prev_error, derivative.
+    updatePID(headingError); 
     float headingCorrection = (Kp_head * headingError) + (Ki_head * integral) + (Kd_head * derivative);
     
-    // 5. Combine the two: adjust the left/right speeds to maintain heading while moving forward.
     int leftSpeed  = constrain((int)(forwardCommand - headingCorrection), 0, 255);
     int rightSpeed = constrain((int)(forwardCommand + headingCorrection), 0, 255);
     
@@ -321,7 +312,6 @@ void moveForward(float target_distance) {
   }
   
   stopMotors();
-  //********new part added by Ali ************ //
   updatePosition();
 }
 
@@ -527,8 +517,6 @@ void randomExplorerStep() {
 
   // =========== CASE 2: Exactly one side is open ===========
   } else if (leftOpen && !rightOpen) {
-    // Left is open, right is blocked
-    // We'll randomize between "turn left" or "go forward (if open)"
     if (randomChoice == 0 && frontOpen) {
       // 50% chance => forward
       SerialBT.println("Left open but picking FORWARD");
@@ -542,7 +530,6 @@ void randomExplorerStep() {
 
   } else if (rightOpen && !leftOpen) {
     // Right is open, left is blocked
-    // We'll randomize between "turn right" or "go forward (if open)"
     if (randomChoice == 0 && frontOpen) {
       SerialBT.println("Right open but picking FORWARD");
     } else {
@@ -565,15 +552,10 @@ void randomExplorerStep() {
   }
 }
 
-// --------------------------
-// Right-Hand Rule Maze Logic
-// --------------------------
 void rightHandRule() {
-
   delay(2000);
   
   while (true) {
-    // new part added by Ali
     if (maze[currentPosition.row][currentPosition.col] == 0) {
       stopMotors();
       break;
