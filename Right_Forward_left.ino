@@ -72,11 +72,33 @@ float gyroBiasZ = 0;
 static const int MAZE_WIDTH  = 8;
 static const int MAZE_HEIGHT = 8;
 
-// Robot heading: 0=N, 1=E, 2=S, 3=W
-int robotX = 0;       // Start at leftmost bottom cell => (0,0)
-int robotY = 0;       // 
-int robotHeading = 0; // 0=N (facing upward in standard 2D grid)
-bool visited[MAZE_WIDTH][MAZE_HEIGHT]; // track visited cells
+
+
+//************* added part by Ali *****************//
+// maze info
+const int mazeWidth = 8, mazeHeight = 8;
+
+int maze[mazeHeight][mazeWidth] = {
+  {1,1,1,1,1,1,1,1},
+  {1,1,1,1,1,1,1,1},
+  {1,1,1,1,1,1,1,1},
+  {1,1,1,0,0,1,1,1},  // Center cells (3,3) and (3,4)
+  {1,1,1,0,0,1,1,1},  // Center cells (4,3) and (4,4)
+  {1,1,1,1,1,1,1,1},
+  {1,1,1,1,1,1,1,1},
+  {1,1,1,1,1,1,1,1}
+};
+
+// Define robot orientation
+enum Orientation {NORTH, SOUTH, EAST, WEST};
+Orientation currentOrientation = NORTH; // to be modified based on the initial orientation of the robot.
+
+// Define robot position
+struct Position {
+  int row;
+  int col;
+};
+Position currentPosition = {7, 0}; // Start at bottom-left corner, to be modified based on the initial cell of the robot.
 
 // --------------------------
 // LEDC (PWM) Configuration
@@ -299,6 +321,8 @@ void moveForward(float target_distance) {
   }
   
   stopMotors();
+  //********new part added by Ali ************ //
+  updatePosition();
 }
 
 // --------------------------
@@ -364,9 +388,25 @@ void turnRight(float targetAngle) {
     setMotorSpeed(turnSpeed, turnSpeed);
     delay(10);
   }
-  
-  // *** MODIFIED *** Update heading
-  robotHeading = (robotHeading + 1) % 4; 
+
+
+  // update current orientation ******* new part ********
+    if (targetAngle == 90){
+      switch (currentOrientation) {
+        case NORTH: currentOrientation = EAST; break;
+        case EAST:  currentOrientation = SOUTH; break;
+        case SOUTH: currentOrientation = WEST; break;
+        case WEST:  currentOrientation = NORTH; break;
+      }
+    }
+    else{ // this is when target angle is 180
+      switch (currentOrientation) {
+        case NORTH: currentOrientation = SOUTH; break;
+        case EAST:  currentOrientation = WEST; break;
+        case SOUTH: currentOrientation = NORTH; break;
+        case WEST:  currentOrientation = EAST; break;
+      }
+    }
 }
 
 void turnLeft(float targetAngle) {
@@ -421,10 +461,13 @@ void turnLeft(float targetAngle) {
     delay(10);
   }
 
-  // *** MODIFIED *** Update heading
-  // Turning left is heading = (heading + 3) % 4 
-  // (equivalent to heading-1 mod 4)
-  robotHeading = (robotHeading + 3) % 4; 
+   // update current orientaion ********** new part **********
+    switch (currentOrientation) {
+      case NORTH: currentOrientation = WEST; break;
+      case WEST:  currentOrientation = SOUTH; break;
+      case SOUTH: currentOrientation = EAST; break;
+      case EAST:  currentOrientation = NORTH; break;
+    }
 }
 
 // --------------------------
@@ -449,29 +492,18 @@ int API_wallLeft() {
   return (irLeft == LOW);
 }
 
-/*Heading 0 => 𝑦++  heading 1 => 𝑥++ heading 2 => 𝑦−− heading 3 => 𝑥−−*/
-bool inCenter(int x, int y) {
-  // The 4 center cells for an 8x8: (3,3), (3,4), (4,3), (4,4)
-  if ((x == 2) && (y == 2)) {
-    return true;
+
+
+// ************** new part added by Ali *************************// 
+void updatePosition() {
+  switch (currentOrientation) {
+    case NORTH: currentPosition.row -= 1; break;
+    case SOUTH: currentPosition.row += 1; break;
+    case EAST:  currentPosition.col += 1; break;
+    case WEST:  currentPosition.col -= 1; break;
   }
-  return false;
 }
 
-// *** ADDED *** After moving 1 cell forward, update (robotX, robotY)
-void updatePosition() {
-  // robotHeading: 0=N, 1=E, 2=S, 3=W
-  if (robotHeading == 0) {
-    robotY = min(robotY + 1, MAZE_HEIGHT - 1);
-  } else if (robotHeading == 1) {
-    robotX = min(robotX + 1, MAZE_WIDTH - 1);
-  } else if (robotHeading == 2) {
-    robotY = max(robotY - 1, 0);
-  } else if (robotHeading == 3) {
-    robotX = max(robotX - 1, 0);
-  }
-  visited[robotX][robotY] = true; 
-}
 void randomExplorerStep() {
   // Evaluate which directions are open
   bool rightOpen  = !API_wallRight();   // TRUE if NO wall on right
@@ -490,7 +522,7 @@ void randomExplorerStep() {
       SerialBT.println("Random => Turn LEFT + Forward");
       turnLeft(90);
     }
-    updatePosition();       // update (robotX, robotY) heading if needed
+
     moveForward(19.6);        // move 20cm to next cell
 
   // =========== CASE 2: Exactly one side is open ===========
@@ -501,12 +533,10 @@ void randomExplorerStep() {
       // 50% chance => forward
       SerialBT.println("Left open but picking FORWARD");
       moveForward(19.6);
-      updatePosition();
     } else {
       // else => turn left
       SerialBT.println("Turn LEFT + Forward");
       turnLeft(90);
-      updatePosition();
       moveForward(19.6);
     }
 
@@ -515,13 +545,10 @@ void randomExplorerStep() {
     // We'll randomize between "turn right" or "go forward (if open)"
     if (randomChoice == 0 && frontOpen) {
       SerialBT.println("Right open but picking FORWARD");
-      moveForward(19.6);
-      updatePosition();
     } else {
       // else => turn right
       SerialBT.println("Turn RIGHT + Forward");
       turnRight(90);
-      updatePosition();
       moveForward(19.6);
     }
 
@@ -529,14 +556,11 @@ void randomExplorerStep() {
   } else if (frontOpen) {
     SerialBT.println("Forward is open => Move forward");
     moveForward(19.6);
-    updatePosition();
 
   // =========== CASE 4: Dead End => turn around ===========
   } else {
     SerialBT.println("Dead end => Turn around 180");
     turnRight(180);
-    robotHeading = (robotHeading + 2) % 4;
-    updatePosition();
     moveForward(19.6);  // optional step forward
   }
 }
@@ -545,23 +569,12 @@ void randomExplorerStep() {
 // Right-Hand Rule Maze Logic
 // --------------------------
 void rightHandRule() {
-  // *** ADDED *** Mark start as visited
-  robotX = 0;
-  robotY = 0;
-  robotHeading = 0;
-  for (int i = 0; i < MAZE_WIDTH; i++) {
-    for (int j = 0; j < MAZE_HEIGHT; j++) {
-      visited[i][j] = false;
-    }
-  }
-  visited[0][0] = true;
 
   delay(2000);
   
   while (true) {
-    // If we've reached the center, stop.
-    if (inCenter(robotX, robotY)) {
-      SerialBT.println("Reached the center goal!");
+    // new part added by Ali
+    if (maze[currentPosition.row][currentPosition.col] == 0) {
       stopMotors();
       break;
     }
@@ -570,9 +583,8 @@ void rightHandRule() {
     bool wallFront  = API_wallFront();
     bool wallLeft   = API_wallLeft();
 
-    SerialBT.print("Pos("); SerialBT.print(robotX); SerialBT.print(", ");
-    SerialBT.print(robotY); SerialBT.print("), heading=");
-    SerialBT.print(robotHeading);
+    SerialBT.print("Pos("); SerialBT.print(currentPosition.row); SerialBT.print(", ");
+    SerialBT.print(currentPosition.col);
     SerialBT.print(" | WallRight="); SerialBT.print(wallRight);
     SerialBT.print(", WallFront="); SerialBT.print(wallFront);
     SerialBT.print(", WallLeft="); SerialBT.println(wallLeft);
@@ -614,10 +626,9 @@ void setup() {
   initLiDAR();
   
 }
-
 void loop() {
   // Right-hand rule solver
-   rightHandRule();
+  rightHandRule();
 
   // Once done, do nothing
   while (1) {
